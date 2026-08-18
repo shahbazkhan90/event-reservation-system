@@ -26,4 +26,8 @@
         Optional<Reservation> findByIdWithLock(@Param("id") Long id);
 
 
+        @Query(value = "SELECT * FROM reservations WHERE event_id = :eventId AND status = 'WAITLISTED' ORDER BY created_at ASC LIMIT 1", nativeQuery = true)
+        Optional<Reservation> findOldestWaitlistedByEvent(@Param("eventId") Long eventId);
+
+
     }

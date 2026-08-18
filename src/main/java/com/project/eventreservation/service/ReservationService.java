@@ -10,11 +10,14 @@ import com.project.eventreservation.model.Reservation;
 import com.project.eventreservation.repository.EventRepository;
 import com.project.eventreservation.repository.OutboxEventRepository;
 import com.project.eventreservation.repository.ReservationRepository;
+import jakarta.persistence.criteria.CriteriaBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 //@RequiredArgsConstructor
@@ -45,15 +48,19 @@ public class ReservationService {
 
         Integer currentSeats = repository.sumSeatBookedByEventIdAndStatuses(dto.getEventId(), List.of("CONFIRMED","PENDING"));
         int remainingSeats =event.getTotalCapacity()-currentSeats;
+        String initialStatus;
         if(dto.getSeatsBooked()>remainingSeats){
-            throw new BadRequestException("Not enough seats available. Only "+remainingSeats+" are available");
+            initialStatus = "WAITLISTED";
+        }
+        else {
+            initialStatus = "PENDING";
         }
 
         Reservation reservation = new Reservation();
         reservation.setUserId(dto.getUserId());
         reservation.setEventId(dto.getEventId());
         reservation.setSeatsBooked(dto.getSeatsBooked());
-        reservation.setStatus("PENDING");
+        reservation.setStatus(initialStatus);
         Reservation savedReservation = repository.save(reservation);
 
         try {
@@ -62,7 +69,7 @@ public class ReservationService {
 
             OutboxEvent outboxEvent = new OutboxEvent(
                     savedReservation.getId().toString(),
-                    "RESERVATION PENDING",
+                    "RESERVATION "+ initialStatus,
                     jsonPayload);
 
             outboxEventRepository.save(outboxEvent);
@@ -77,6 +84,71 @@ public class ReservationService {
     }
 
     @Transactional
+    public void promoteSeats(Long eventId){
+        Event event = eventRepository.findByIdWithLock(eventId)
+                .orElseThrow(()-> new RuntimeException("Event not found"));
+
+        int currentSeats = repository.sumSeatBookedByEventIdAndStatuses(event.getId(),List.of("CONFIRMED","PENDING"));
+        int remainingSeats = event.getTotalCapacity()-currentSeats;
+        if(remainingSeats<=0){
+            return;
+        }
+
+        Optional<Reservation> oldestReservation = repository.findOldestWaitlistedByEvent(eventId);
+
+        if(oldestReservation.isPresent()){
+            Reservation waitlisted = oldestReservation.get();
+
+            if(waitlisted.getSeatsBooked()<=remainingSeats){
+                waitlisted.setStatus("PENDING");
+                waitlisted.setCreatedAt(LocalDateTime.now());
+                repository.save(waitlisted);
+
+                try {
+                    OutboxEvent outboxEvent = new OutboxEvent(
+                            waitlisted.getId().toString(),
+                            "RESERVATION_PROMOTED",
+                            objectMapper.writeValueAsString(waitlisted)
+                    );
+                    outboxEventRepository.save(outboxEvent);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to serialize promotion event", e);
+                }
+
+            }
+        }
+    }
+
+    @Transactional
+    public void cancelReservation(Long reservationId) {
+        // 1. Lock the row to block the payment webhook from interfering
+        Reservation reservation = repository.findByIdWithLock(reservationId)
+                .orElseThrow(() -> new RuntimeException("Reservation not found"));
+
+        // 2. Idempotency Check: Only cancel if it's still PENDING
+        if (!"PENDING".equals(reservation.getStatus())) {
+            return;
+        }
+
+        // 3. Apply state transition
+        reservation.setStatus("CANCELLED");
+        repository.save(reservation);
+
+        // 4. Atomic Outbox write
+        try {
+            OutboxEvent outboxEvent = new OutboxEvent(
+                    reservation.getId().toString(),
+                    "RESERVATION_CANCELLED",
+                    objectMapper.writeValueAsString(reservation)
+            );
+            outboxEventRepository.save(outboxEvent);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to serialize cancel event payload", e);
+        }
+    }
+
+
+    @Transactional
     public void processPayment(PaymentWebhookdto dto ){
         Reservation reservation = repository.findByIdWithLock(dto.getReservationId())
                 .orElseThrow(() -> new BadRequestException("Reservation not Found"));
@@ -84,12 +156,13 @@ public class ReservationService {
         if(!"PENDING".equals(reservation.getStatus())){
             return;
         }
+
         if("SUCCESS".equals(dto.getStatus())){
             reservation.setStatus("CONFIRMED");
-        }
-        else {
+        } else {
             reservation.setStatus("CANCELLED");
         }
+
         repository.save(reservation);
 
         try {
@@ -107,8 +180,7 @@ public class ReservationService {
 
             outboxEventRepository.save(outboxEvent);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to Serialize the event payload", e);
+            throw new RuntimeException("Failed to serialize the event payload", e);
         }
     }
-
 }
