@@ -12,8 +12,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ReservationRequestDTO {
     @NotNull
-    private Long userId;
-    @NotNull
     private Long eventId;
     @NotNull
     @Min(value = 1,message = "Must book at least 1 ticket")

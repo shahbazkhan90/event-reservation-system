@@ -41,15 +41,15 @@ public class ReservationService {
 
 
     @Transactional
-    public Reservation createReservation(ReservationRequestDTO dto){
+    public Reservation createReservation(Long userId,Long eventId,Integer seatsBooked){
 
-        Event event = eventRepository.findByIdWithLock(dto.getEventId())
+        Event event = eventRepository.findByIdWithLock(eventId)
                 .orElseThrow(() -> new BadRequestException("Event not found"));
 
-        Integer currentSeats = repository.sumSeatBookedByEventIdAndStatuses(dto.getEventId(), List.of("CONFIRMED","PENDING"));
+        Integer currentSeats = repository.sumSeatBookedByEventIdAndStatuses(eventId, List.of("CONFIRMED","PENDING"));
         int remainingSeats =event.getTotalCapacity()-currentSeats;
         String initialStatus;
-        if(dto.getSeatsBooked()>remainingSeats){
+        if(seatsBooked>remainingSeats){
             initialStatus = "WAITLISTED";
         }
         else {
@@ -57,9 +57,9 @@ public class ReservationService {
         }
 
         Reservation reservation = new Reservation();
-        reservation.setUserId(dto.getUserId());
-        reservation.setEventId(dto.getEventId());
-        reservation.setSeatsBooked(dto.getSeatsBooked());
+        reservation.setUserId(userId);
+        reservation.setEventId(eventId);
+        reservation.setSeatsBooked(seatsBooked);
         reservation.setStatus(initialStatus);
         Reservation savedReservation = repository.save(reservation);
 

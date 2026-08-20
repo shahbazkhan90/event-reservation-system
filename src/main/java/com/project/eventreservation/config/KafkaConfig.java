@@ -6,6 +6,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
@@ -61,7 +62,7 @@ public class KafkaConfig {
 
     // --- ERROR HANDLING & DLQ CONFIG ---
     @Bean
-    public CommonErrorHandler errorHandler(KafkaTemplate<?, ?> template) {
+    public CommonErrorHandler errorHandler(@Qualifier("kafkaTemplate")KafkaTemplate<?, ?> template) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 template,
                 (consumerRecord, exception) -> new TopicPartition(consumerRecord.topic() + ".DLT", -1)
@@ -83,5 +84,19 @@ public class KafkaConfig {
         factory.setCommonErrorHandler(errorHandler);
 
         return factory;
+    }
+    // --- RAW STRING PRODUCER (FOR OUTBOX SWEEPER) ---
+    @Bean
+    public ProducerFactory<String, String> stringProducerFactory() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
+    @Bean(name = "stringKafkaTemplate")
+    public KafkaTemplate<String, String> stringKafkaTemplate() {
+        return new KafkaTemplate<>(stringProducerFactory());
     }
 }

@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,7 +23,9 @@ public class ReservationController {
 
     @PostMapping("")
     public ResponseEntity<Reservation> createReservation(@Valid @RequestBody ReservationRequestDTO dto){
-        return new ResponseEntity<>(service.createReservation(dto), HttpStatus.CREATED);
+        String authenticatedUserId = (String)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Long userId = Long.valueOf(authenticatedUserId);
+        return new ResponseEntity<>(service.createReservation(userId,dto.getEventId(),dto.getSeatsBooked()), HttpStatus.CREATED);
     }
 
 

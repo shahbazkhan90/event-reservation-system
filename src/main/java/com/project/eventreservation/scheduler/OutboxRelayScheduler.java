@@ -31,7 +31,7 @@ public class OutboxRelayScheduler {
 
     @Scheduled(fixedDelay = 5000)
     public void processOutboxEvents(){
-        List<OutboxEvent> pendingEvents = outboxEventRepository.findByStatusOrderByCreatedAtAsc("PENDING");
+        List<OutboxEvent> pendingEvents = outboxEventRepository.findPendingEventsForProcessing();
 
         for(OutboxEvent events : pendingEvents){
             try {
