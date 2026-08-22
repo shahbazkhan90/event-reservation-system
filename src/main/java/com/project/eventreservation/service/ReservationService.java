@@ -105,10 +105,12 @@ public class ReservationService {
                 repository.save(waitlisted);
 
                 try {
+                    ReservationEvent reservationEvent = new ReservationEvent(waitlisted);
+                    String jsonPayload = objectMapper.writeValueAsString(reservationEvent);
                     OutboxEvent outboxEvent = new OutboxEvent(
                             waitlisted.getId().toString(),
                             "RESERVATION_PROMOTED",
-                            objectMapper.writeValueAsString(waitlisted)
+                            jsonPayload
                     );
                     outboxEventRepository.save(outboxEvent);
                 } catch (Exception e) {
@@ -136,15 +138,20 @@ public class ReservationService {
 
         // 4. Atomic Outbox write
         try {
+
+            ReservationEvent payload = new ReservationEvent(reservation);
+            String jsonPayload = objectMapper.writeValueAsString(payload);
+
             OutboxEvent outboxEvent = new OutboxEvent(
                     reservation.getId().toString(),
                     "RESERVATION_CANCELLED",
-                    objectMapper.writeValueAsString(reservation)
+                    jsonPayload
             );
             outboxEventRepository.save(outboxEvent);
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize cancel event payload", e);
         }
+        promoteSeats(reservation.getEventId());
     }
 
 
@@ -181,6 +188,9 @@ public class ReservationService {
             outboxEventRepository.save(outboxEvent);
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize the event payload", e);
+        }
+        if("CANCELLED".equals(reservation.getStatus())) {
+            promoteSeats(reservation.getEventId());
         }
     }
 }

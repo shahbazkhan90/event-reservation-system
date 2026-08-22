@@ -20,7 +20,7 @@ public class OutRelayService {
         this.kafkaTemplate= kafkaTemplate;
     }
 
-    @Scheduled(fixedDelay = 2000)
+    @Scheduled(fixedDelay = 10000)
     @Transactional
     public void processPendingEvents(){
         List<OutboxEvent> events = outboxRepository.findPendingEventsForProcessing();

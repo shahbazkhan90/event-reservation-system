@@ -6,6 +6,7 @@ import com.project.eventreservation.model.OutboxEvent;
 import com.project.eventreservation.model.Reservation;
 import com.project.eventreservation.repository.OutboxEventRepository;
 import com.project.eventreservation.repository.ReservationRepository;
+import com.project.eventreservation.service.ReservationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,19 +22,15 @@ public class PaymentTTLExecutor {
     private static final Logger logger = LoggerFactory.getLogger(PaymentTTLExecutor.class);
 
     private final ReservationRepository repository;
-    private final OutboxEventRepository outboxRepository;
-    private final ObjectMapper objectMapper;
+    private final ReservationService service;
 
     public PaymentTTLExecutor(ReservationRepository reservationRepository,
-                              OutboxEventRepository outboxEventRepository,
-                              ObjectMapper objectMapper){
+                              ReservationService service){
         this.repository = reservationRepository;
-        this.outboxRepository = outboxEventRepository;
-        this.objectMapper = objectMapper;
+        this.service=service;
     }
 
     @Scheduled(fixedDelay = 60000)
-    @Transactional
     public void releaseUnpaidSeats(){
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(10);
 
@@ -44,17 +41,18 @@ public class PaymentTTLExecutor {
         }
 
         for (Reservation reservation : expiredReservations){
-            reservation.setStatus("CANCELLED");
-            repository.save(reservation);
+//            reservation.setStatus("CANCELLED");
+//            repository.save(reservation);
 
             try {
-                ReservationEvent reservationEvent = new ReservationEvent(reservation);
-                String jsonPayload = objectMapper.writeValueAsString(reservationEvent);
-                OutboxEvent outboxEvent = new OutboxEvent(
-                        reservation.getId().toString(),
-                        "RESERVATION_CANCELLED",
-                        jsonPayload);
-                outboxRepository.save(outboxEvent);
+//                ReservationEvent reservationEvent = new ReservationEvent(reservation);
+//                String jsonPayload = objectMapper.writeValueAsString(reservationEvent);
+//                OutboxEvent outboxEvent = new OutboxEvent(
+//                        reservation.getId().toString(),
+//                        "RESERVATION_CANCELLED",
+//                        jsonPayload);
+//                outboxRepository.save(outboxEvent);
+                service.cancelReservation(reservation.getId());
                 logger.info("Released unpaid reservation ID {} and restored seat capacity.", reservation.getId());
             }
             catch (Exception e){
